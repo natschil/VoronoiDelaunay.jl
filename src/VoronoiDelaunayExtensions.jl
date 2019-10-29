@@ -19,16 +19,9 @@ end
 # convert the edge points back to original scale after the tessellation
 
 function expand( points::Array{Point2D,1}, ranges::NTuple{4,Float64} )
-  scaledPoints = deepcopy(points)
-  xmin = ranges[1]
-  ymin = ranges[3]
   scale = max( ranges[4] - ranges[3], ranges[2] - ranges[1] ) / 0.98
   offset = 1.01
-  for i in 1:length(scaledPoints)
-    scaledPoints[i]._x = ( points[i]._x - offset ) * scale + xmin
-    scaledPoints[i]._y = ( points[i]._y - offset ) * scale + ymin
-  end
-  return scaledPoints
+  points = [ Point2D( ( p._x - ranges[1] ) * scale + offset, ( p._y - ranges[3] ) * scale + offset ) for p in points ]
 end
 
 
@@ -101,12 +94,31 @@ function circumcircleUnion( hull::Array{Point2D,1}, points::Array{Point2D,1} )
   hullcirc = copy(hull)
   push!( hullcirc, hull[1] )
   for i in 1:length( hull )
-    otherpoints = setdiff( points, [ hullcirc[i], hullcirc[i+1] ] )
-    circles = circumcircles( hullcirc[i], hullcirc[i+1], otherpoints )
-    j = argmax( getrad.( circles ) )
-    ccU[i] = circles[j]
+    cc2 = circumcircle( hullcirc[i], hullcirc[i+1] )
+    ccU[i] = cc2
+    for j in 1:length(points)
+      if pointsDistance( points[j], cc2.c ) < cc2.r
+        cc3 = circumcircle( hullcirc[i], hullcirc[i+1], points[j] )
+        if cc3.r > ccU[i].r
+          ccU[i] = cc3
+        end
+      end
+    end
   end
   return ccU
+end
+
+function pointsDistance( p1::Point2D, p2::Point2D )
+  sqrt( ( p1._x - p2._x ) ^ 2 + ( p1._y - p2._y ) ^ 2 )
+end
+
+function circumcircle( a::Point2D, b::Point2D )
+  px = (a._x + b._x) / 2.0
+  py = (a._y + b._y) / 2.0
+  dx = (b._x - a._x) / 2.0
+  dy = (b._y - a._y) / 2.0
+  r = sqrt( dx^2 + dy^2 )
+  return Circle( Point2D(px,py), r )
 end
 
 function circumcircle( a::Point2D, b::Point2D, c::Point2D )
@@ -129,8 +141,6 @@ getcenx(circ::Circle) = getx( getcen( circ ) )
 getceny(circ::Circle) = gety( getcen( circ ) )
 getrad(circ::Circle)  = circ.r
 
-circumcircles( a::Point2D, b::Point2D, points::Array{Point2D,1} ) = [ circumcircle(a,b,points[i]) for i in 1:length(points) ]
-
 
 
 function frameRanges( ccU::Array{Circle,1} )
@@ -144,14 +154,9 @@ end
 
 
 function shrink( points::Array{Point2D,1}, ranges::NTuple{4,Float64} )
-  scaledPoints = deepcopy(points)
   h = ranges[4] - ranges[3]
   b = ranges[2] - ranges[1]
   offset = 1.01
   scale = 0.98 / max( h, b )
-  for i in 1:length(points)
-    scaledPoints[i]._x = ( points[i]._x - ranges[1] ) * scale + offset
-    scaledPoints[i]._y = ( points[i]._y - ranges[3] ) * scale + offset
-  end
-  return scaledPoints
+  points = [ Point2D( ( p._x - ranges[1] ) * scale + offset, ( p._y - ranges[3] ) * scale + offset ) for p in points ]
 end
