@@ -132,288 +132,88 @@ function _pushunfixed!(tess::DelaunayTessellation2D{T}, p::T) where T<:AbstractP
     return i
 end
 
-function _flipa!(tess::DelaunayTessellation2D, ix1::Int64, ix2::Int64)
+"""
+    _flip!(tess,point_added,ix1,ix2,ot1,ot2)
+
+Flips a single edge in the triangulation. 
+Here `point_added` is the index (within `ix1`, so one of 1,2,3) of the 
+new point that was added. 
+Here `ix1` is the triangle that has this point as its vertex 
+and the edge to be flipped opposite to it.
+Here `ix2` is the triangle on the other side of this edge.
+
+"""
+function _flip!(tess::DelaunayTessellation2D{T},point_added::Int64,
+                  ix1::Int64, ix2::Int64,
+                  ) where T<:AbstractPoint2D
+
+
     @inbounds ot1 = tess._trigs[ix1]
     @inbounds ot2 = tess._trigs[ix2]
-    if ot2._neighbour_a == ix1
-        _flipaa!(tess, ix1, ix2, ot1, ot2)
-    elseif ot2._neighbour_b == ix1
-        _flipab!(tess, ix1, ix2, ot1, ot2)
+
+    #We want ot2.getneighbor(point_other) == ix1,
+    #i.e. to get the local index of ix1
+    point_other::Int64 = 0
+    if getneighbor(ot2,1) == ix1
+        point_other = 1
+    elseif getneighbor(ot2,2) ==  ix1
+        point_other = 2
     else
-        _flipac!(tess, ix1, ix2, ot1, ot2)
+        point_other = 3
     end
-end
 
-function _endflipa!(tess::DelaunayTessellation2D,
-                    ix1::Int64, ix2::Int64,
-                    ot1::DelaunayTriangle, ot2::DelaunayTriangle)
-    @inbounds n1 = tess._trigs[ot1._neighbour_a]
-    if n1._neighbour_a==ix2
-        n1._neighbour_a = ix1
-    elseif n1._neighbour_b==ix2
-        n1._neighbour_b = ix1
+    #These are the local indices of the other two points in ix1
+    point_added_p = mod1(point_added+1,3)
+    point_added_pp = mod1(point_added+2,3)
+
+    #These are the local indices of the other two points in ix2
+    point_other_p = mod1(point_other+1,3)
+    point_other_pp = mod1(point_other+2,3)
+
+    #Flip the edge
+    
+    #First we fix ot1
+    #We can keep `point_added` in the triangle.
+    #We can also safely keep `point_added_pp`
+    #This means we must replace `point_added_p` (with the point that is accross
+    #the edge i.e. `point_other`
+    old_ot1_geom_point_added_p = getpoint(ot1,point_added_p)
+    setpoint!(ot1,point_added_p, getpoint(ot2,point_other))
+    setneighbor!(ot1,point_added, getneighbor(ot2,point_other_pp))
+    old_ot1_neighbor_point_added_pp = getneighbor!(ot1,point_added_pp)
+    setneighbor!(ot1,point_added_pp,ix2)
+
+
+    #Fix ot2
+    new_pp = getpoint(ot2,point_other)
+    setpoint!(ot1,point_other, getpoint(ot1,point_added) )
+    setpoint!(ot1,point_other_p, old_ot1_geom_point_added_p)
+    setpoint!(ot1,point_other_pp, new_pp )
+
+    setneighbor!(ot2,point_other, getneighbor!(ot2,point_other_p))
+    setneighbor!(ot2,point_other_p,ix1)
+    setneighbor!(ot2,point_other_pp,old_ot1_neighbor_point_added_pp)
+
+
+    #Fix neighbors of triangles that were not fixed
+
+    @inbounds n1 = tess._trigs[getneighbor(ot1,point_added)]
+    if getneighbor(n1,1) ==ix2
+        setneighbor!(n1,1,ix1)
+    elseif getneighbor(n1,2) == ix2
+        setneighbor!(n1,2,ix1)
     else
-        n1._neighbour_c = ix1
+        setneighbor!(n1,3,ix1)
     end
-    @inbounds n2 = tess._trigs[ot2._neighbour_c]
-    if n2._neighbour_a==ix1
-        n2._neighbour_a = ix2
-    elseif n2._neighbour_b==ix1
-        n2._neighbour_b = ix2
+    @inbounds n2 = tess._trigs[getneighbor(ot2,point_other_pp)]
+    if getneighbor(n2,1) ==ix1
+        setneighbor!(n2,1,ix2)
+    elseif getneighbor(n2,2) == ix1
+        setneighbor!(n2,2,ix2)
     else
-        n2._neighbour_c = ix2
+        setneighbor!(n2,3,ix2)
     end
-end
 
-function _flipaa!(tess::DelaunayTessellation2D{T},
-                  ix1::Int64, ix2::Int64,
-                  ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    old_ot1_geom_b = getb(ot1)
-    setb(ot1, geta(ot2))
-    ot1._neighbour_a = ot2._neighbour_c
-    old_ot1_neighbour_c = ot1._neighbour_c
-    ot1._neighbour_c = ix2
-
-    newc = geta(ot2)
-    setabc(ot2, geta(ot1), old_ot1_geom_b, newc)
-    ot2._neighbour_a = ot2._neighbour_b
-    ot2._neighbour_b = ix1
-    ot2._neighbour_c = old_ot1_neighbour_c
-
-    _endflipa!(tess,ix1,ix2,ot1,ot2)
-end
-
-function _flipab!(tess::DelaunayTessellation2D{T},
-                  ix1::Int64, ix2::Int64,
-                  ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    old_ot1_geom_b = getb(ot1)
-    setb(ot1, getb(ot2))
-    ot1._neighbour_a = ot2._neighbour_a
-    old_ot1_neighbour_c = ot1._neighbour_c
-    ot1._neighbour_c = ix2
-
-    newc = getb(ot2)
-    setabc(ot2, geta(ot1), old_ot1_geom_b, newc)
-    ot2._neighbour_a = ot2._neighbour_c
-    ot2._neighbour_b = ix1
-    ot2._neighbour_c = old_ot1_neighbour_c
-
-    _endflipa!(tess,ix1,ix2,ot1,ot2)
-end
-
-function _flipac!(tess::DelaunayTessellation2D{T},
-                  ix1::Int64, ix2::Int64,
-                  ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    old_ot1_geom_b = getb(ot1)
-    setb(ot1, getc(ot2))
-    ot1._neighbour_a = ot2._neighbour_b
-    old_ot1_neighbour_c = ot1._neighbour_c
-    ot1._neighbour_c = ix2
-
-    setab(ot2, geta(ot1), old_ot1_geom_b)
-    ot2._neighbour_b = ix1
-    ot2._neighbour_c = old_ot1_neighbour_c
-
-    _endflipa!(tess,ix1,ix2,ot1,ot2)
-end
-
-########################
-
-function _flipb!(tess::DelaunayTessellation2D{T},
-                 ix1::Int64, ix2::Int64) where T<:AbstractPoint2D
-    @inbounds ot1 = tess._trigs[ix1]
-    @inbounds ot2 = tess._trigs[ix2]
-    if ot2._neighbour_a == ix1
-        _flipba!(tess, ix1, ix2, ot1, ot2)
-    elseif ot2._neighbour_b == ix1
-        _flipbb!(tess, ix1, ix2, ot1, ot2)
-    else
-        _flipbc!(tess, ix1, ix2, ot1, ot2)
-    end
-end
-
-function _endflipb!(tess::DelaunayTessellation2D{T},
-                    ix1::Int64, ix2::Int64,
-                    ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    @inbounds n1 = tess._trigs[ot1._neighbour_b]
-    if n1._neighbour_a==ix2
-        n1._neighbour_a = ix1
-    elseif n1._neighbour_b==ix2
-        n1._neighbour_b = ix1
-    else
-        n1._neighbour_c = ix1
-    end
-    @inbounds n2 = tess._trigs[ot2._neighbour_a]
-    if n2._neighbour_a==ix1
-        n2._neighbour_a = ix2
-    elseif n2._neighbour_b==ix1
-        n2._neighbour_b = ix2
-    else
-        n2._neighbour_c = ix2
-    end
-end
-function _flipedge!(tess::DelaunayTessellation2D{T}, point1::Int64,point2::Int64,point3::Int64
-                  ix1::Int64, ix2::Int64,
-                  ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-
-
-    old_ot1_geom_point3 = getpoint(ot1,point3)
-    setpoint!(ot1,point3, getpoint(ot2,point2))
-
-    old_ot1_neighbor_point2 = getneighbor(ot1,point2)
-    setneighbor!(ot1,point2,ix2)
-    setneighbor!(ot1,point1,getneighbor(ot2,point3))
-
-    set2points!(ot2,point1,point3,getpoint(ot1,point1), old_ot1_geom_point3)
-
-    setneighbor!(ot2, point2, old_ot1_neighbor_point2)
-    setneighbor!(ot2, point3, ix1)
-
-    _endflippoint!(tess,ix1,ix2,ot1,ot2)
-end
-
- 
-
-
-#Is flipedge!(tess,2,1,3,_)
-function _flipba!(tess::DelaunayTessellation2D{T},
-                  ix1::Int64, ix2::Int64,
-                  ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    old_ot1_geom_c = getc(ot1)
-    setc(ot1, geta(ot2))
-    old_ot1_neighbour_a = ot1._neighbour_a
-    ot1._neighbour_a = ix2
-    ot1._neighbour_b = ot2._neighbour_c
-
-    setbc(ot2, getb(ot1), old_ot1_geom_c)
-    ot2._neighbour_a = old_ot1_neighbour_a
-    ot2._neighbour_c = ix1
-
-    _endflipb!(tess,ix1,ix2,ot1,ot2)
-end
-
-function _flipbb!(tess::DelaunayTessellation2D{T},
-                  ix1::Int64, ix2::Int64,
-                  ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    old_ot1_geom_c = getc(ot1)
-    setc(ot1, getb(ot2))
-    old_ot1_neighbour_a = ot1._neighbour_a
-    ot1._neighbour_a = ix2
-    ot1._neighbour_b = ot2._neighbour_a
-
-    newa = getb(ot2)
-    setabc(ot2, newa, getb(ot1), old_ot1_geom_c)
-    ot2._neighbour_a = old_ot1_neighbour_a
-    ot2._neighbour_b = ot2._neighbour_c
-    ot2._neighbour_c = ix1
-
-    _endflipb!(tess,ix1,ix2,ot1,ot2)
-end
-
-function _flipbc!(tess::DelaunayTessellation2D{T},
-                  ix1::Int64, ix2::Int64,
-                  ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    old_ot1_geom_c = getc(ot1)
-    setc(ot1, getc(ot2))
-    old_ot1_neighbour_a = ot1._neighbour_a
-    ot1._neighbour_a = ix2
-    ot1._neighbour_b = ot2._neighbour_b
-
-    newa = getc(ot2)
-    setabc(ot2, newa, getb(ot1), old_ot1_geom_c)
-    ot2._neighbour_b = ot2._neighbour_a
-    ot2._neighbour_a = old_ot1_neighbour_a
-    ot2._neighbour_c = ix1
-
-    _endflipb!(tess,ix1,ix2,ot1,ot2)
-end
-
-########################
-
-function _flipc!(tess::DelaunayTessellation2D{T},
-                 ix1::Int64, ix2::Int64) where T<:AbstractPoint2D
-    @inbounds ot1 = tess._trigs[ix1]
-    @inbounds ot2 = tess._trigs[ix2]
-    if ot2._neighbour_a == ix1
-        _flipca!(tess, ix1, ix2, ot1, ot2)
-    elseif ot2._neighbour_b == ix1
-        _flipcb!(tess, ix1, ix2, ot1, ot2)
-    else
-        _flipcc!(tess, ix1, ix2, ot1, ot2)
-    end
-end
-
-function _endflipc!(tess::DelaunayTessellation2D{T},
-                    ix1::Int64, ix2::Int64,
-                    ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    @inbounds n1 = tess._trigs[ot1._neighbour_c]
-    if n1._neighbour_a==ix2
-        n1._neighbour_a = ix1
-    elseif n1._neighbour_b==ix2
-        n1._neighbour_b = ix1
-    else
-        n1._neighbour_c = ix1
-    end
-    @inbounds n2 = tess._trigs[ot2._neighbour_b]
-    if n2._neighbour_a==ix1
-        n2._neighbour_a = ix2
-    elseif n2._neighbour_b==ix1
-        n2._neighbour_b = ix2
-    else
-        n2._neighbour_c = ix2
-    end
-end
-
-function _flipca!(tess::DelaunayTessellation2D{T},
-                  ix1::Int64, ix2::Int64,
-                  ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    old_ot1_geom_a = geta(ot1)
-    seta(ot1, geta(ot2))
-    old_ot1_neighbour_b = ot1._neighbour_b
-    ot1._neighbour_b = ix2
-    ot1._neighbour_c = ot2._neighbour_c
-
-    newb = geta(ot2)
-    setabc(ot2, old_ot1_geom_a, newb, getc(ot1))
-    ot2._neighbour_a = ix1
-    ot2._neighbour_c = ot2._neighbour_b
-    ot2._neighbour_b = old_ot1_neighbour_b
-
-    _endflipc!(tess,ix1,ix2,ot1,ot2)
-end
-
-function _flipcb!(tess::DelaunayTessellation2D{T},
-                  ix1::Int64, ix2::Int64,
-                  ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    old_ot1_geom_a = geta(ot1)
-    seta(ot1, getb(ot2))
-    old_ot1_neighbour_b = ot1._neighbour_b
-    ot1._neighbour_b = ix2
-    ot1._neighbour_c = ot2._neighbour_a
-
-    setac(ot2, old_ot1_geom_a, getc(ot1))
-    ot2._neighbour_a = ix1
-    ot2._neighbour_b = old_ot1_neighbour_b
-
-    _endflipc!(tess,ix1,ix2,ot1,ot2)
-end
-
-function _flipcc!(tess::DelaunayTessellation2D{T},
-                  ix1::Int64, ix2::Int64,
-                  ot1::DelaunayTriangle{T}, ot2::DelaunayTriangle{T}) where T<:AbstractPoint2D
-    old_ot1_geom_a = geta(ot1)
-    seta(ot1, getc(ot2))
-    old_ot1_neighbour_b = ot1._neighbour_b
-    ot1._neighbour_b = ix2
-    ot1._neighbour_c = ot2._neighbour_b
-
-    newb = getc(ot2)
-    setabc(ot2, old_ot1_geom_a, newb, getc(ot1))
-    ot2._neighbour_c = ot2._neighbour_a
-    ot2._neighbour_a = ix1
-    ot2._neighbour_b = old_ot1_neighbour_b
-
-    _endflipc!(tess,ix1,ix2,ot1,ot2)
 end
 
 """
@@ -430,56 +230,24 @@ function _restoredelaunayhood!(tess::DelaunayTessellation2D{T},
     @inbounds center_pt = geta(tess._trigs[ix_trig])
 
     # `A` - edge
-    push!(tess._edges_to_check, ix_trig)
-    while length(tess._edges_to_check) > 0
-        #Find the corresponding `a` vertex
-        @inbounds trix = tess._edges_to_check[end]
-        @inbounds tr_i = tess._trigs[trix]
-        @inbounds nb_a = tr_i._neighbour_a
-        #Check that we are not at the boundary
-        if nb_a > 1
-            @inbounds tr_f = tess._trigs[nb_a]
-            if incircle(tr_f, center_pt) > 0
-                _flipa!(tess, trix, nb_a)
-                push!(tess._edges_to_check, nb_a)
-                continue
+    for j in [1,2,3]
+        push!(tess._edges_to_check, ix_trig)
+        while length(tess._edges_to_check) > 0
+            #Find the corresponding `a` vertex
+            @inbounds trix = tess._edges_to_check[end]
+            @inbounds tr_i = tess._trigs[trix]
+            @inbounds nb_j = getneighbor(tr_i,j)
+            #Check that we are not at the boundary
+            if nb_a > 1
+                @inbounds tr_f = tess._trigs[nb_j]
+                if incircle(tr_f, center_pt) > 0
+                    _flip!(tess,j,trix,nb_j)
+                    push!(tess._edges_to_check, nb_j)
+                    continue
+                end
             end
+            pop!(tess._edges_to_check)
         end
-        pop!(tess._edges_to_check)
-    end
-
-    # `B` - edge
-    push!(tess._edges_to_check, tess._last_trig_index-1)
-    while length(tess._edges_to_check) > 0
-        @inbounds trix = tess._edges_to_check[end]
-        @inbounds tr_i = tess._trigs[trix]
-        @inbounds nb_b = tr_i._neighbour_b
-        if nb_b > 1
-            @inbounds tr_f = tess._trigs[nb_b]
-            if incircle(tr_f, center_pt) > 0
-                _flipb!(tess, trix, nb_b)
-                push!(tess._edges_to_check, nb_b)
-                continue
-            end
-        end
-        pop!(tess._edges_to_check)
-    end
-
-    # `C` - edge
-    push!(tess._edges_to_check, tess._last_trig_index)
-    while length(tess._edges_to_check) > 0
-        @inbounds trix = tess._edges_to_check[end]
-        @inbounds tr_i = tess._trigs[trix]
-        @inbounds nb_c = tr_i._neighbour_c
-        if nb_c > 1
-            @inbounds tr_f = tess._trigs[nb_c]
-            if incircle(tr_f, center_pt) > 0
-                _flipc!(tess, trix, nb_c)
-                push!(tess._edges_to_check, nb_c)
-                continue
-            end
-        end
-        pop!(tess._edges_to_check)
     end
 end
 
