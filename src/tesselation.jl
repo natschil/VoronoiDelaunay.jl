@@ -21,9 +21,9 @@ function expand( tess::DelaunayTessellation2D{T},ranges) where T<:AbstractPoint2
   offset = 1.01
   for i in 1:length(tess._trigs)
     #tess._trigs[i]._a = Point2D( ( tess._trigs[i]._a._x - offset ) * scale + xmin, ( tess._trigs[i]._a._y - offset ) * scale + ymin )
-    tess._trigs[i]._a = expand([tess._trigs[i]._a],ranges)[1]
-    tess._trigs[i]._b = expand([tess._trigs[i]._b],ranges)[1]
-    tess._trigs[i]._c = expand([tess._trigs[i]._c],ranges)[1]
+    seta(tess._trigs[i], expand([geta(tess._trigs[i])],ranges)[1])
+    setb(tess._trigs[i], expand([getb(tess._trigs[i])],ranges)[1])
+    setc(tess._trigs[i],expand([getc(tess._trigs[i])],ranges)[1])
     #tess._trigs[i]._b = Point2D( ( tess._trigs[i]._b._x - offset ) * scale + xmin, ( tess._trigs[i]._b._y - offset ) * scale + ymin )
     #tess._trigs[i]._c = Point2D( ( tess._trigs[i]._c._x - offset ) * scale + xmin, ( tess._trigs[i]._c._y - offset ) * scale + ymin )
     tess._trigs[i]._bx   = tess._trigs[i]._bx  * scale
@@ -65,12 +65,22 @@ function sizefit_at_least(t::DelaunayTessellation2D{T}, n::Int64) where T<:Abstr
 end
 
 
-movea(tess::DelaunayTessellation2D{T},
-      trig::DelaunayTriangle{T}) where {T<:AbstractPoint2D} = tess._trigs[trig._neighbour_a]
-moveb(tess::DelaunayTessellation2D{T},
-      trig::DelaunayTriangle{T}) where {T<:AbstractPoint2D} = tess._trigs[trig._neighbour_b]
-movec(tess::DelaunayTessellation2D{T},
-      trig::DelaunayTriangle{T}) where {T<:AbstractPoint2D} = tess._trigs[trig._neighbour_c]
+"""
+    _replace_neighbor!(neighbor_tri,old_tri,new_tri)
+
+Finds the neighbor in `neighbor_tri` that was equal to `old_tri` and replace with `new_tri`.
+Only call if there is such a neighbor.
+"""
+function _replace_neighbor!(neighbor_tri,old_tri,new_tri)
+    for nindex in 1:3
+        if getneighbor(neighbor_tri,nindex)==old_tri
+            setneighbor!(neighbor_tri,nindex,new_tri)
+            break;
+        end
+    end
+end
+
+
 
 #Finds out in which triangle the point was, and then "splits" the triangle in question into three sub-triangles
 #This function does *not* enforce the delaunay property!
@@ -88,52 +98,39 @@ function _pushunfixed!(tess::DelaunayTessellation2D{T}, p::T) where T<:AbstractP
     @inbounds t1 = tess._trigs[i]
     old_t1_a = geta(t1)
     seta(t1, p)
-    old_t1_b = t1._neighbour_b
-    old_t1_c = t1._neighbour_c
-    t1._neighbour_b = ltrigs1
-    t1._neighbour_c = ltrigs2
+    old_t1_neighbor_b = getneighbor(t1,2)
+    old_t1_neighbor_c = getneighbor(t1,3)
+    setneighbor!(t1,2,ltrigs1)
+    setneighbor!(t1,3,ltrigs2)
 
-    #Modify one of the new triangles to be the second of the new triangles
+    #Modify one of the new triangles (ltrigs1) to be the second of the new triangles
     #The point being added is vertex "b"
-    @inbounds t2 = tess._trigs[ltrigs1]
-    setabc(t2, old_t1_a, p, getc(t1))
-    t2._neighbour_a = i
-    t2._neighbour_b = old_t1_b
-    t2._neighbour_c = ltrigs2
+    @inbounds t_ltrigs1 = tess._trigs[ltrigs1]
+    setabc(t_ltrigs1, old_t1_a, p, getc(t1))
+    setneighbor!(t_ltrigs1,1,i)
+    setneighbor!(t_ltrigs1,2,old_t1_neighbor_b)
+    setneighbor!(t_ltrigs1,3,ltrigs2)
 
-    #Modify one of the new triangles to be the third of the new triangles
+    #Modify one of the new triangles (ltrigs2) to be the third of the new triangles
     #The point being added is vertex "c"
-    @inbounds t3 = tess._trigs[ltrigs2]
-    setabc(t3, old_t1_a, getb(t1), p)
-    t3._neighbour_a = i
-    t3._neighbour_b = ltrigs1
-    t3._neighbour_c = old_t1_c
+    @inbounds t_ltrigs2 = tess._trigs[ltrigs2]
+    setabc(t_ltrigs2, old_t1_a, getb(t1), p)
+    setneighbor!(t_ltrigs2,1,i)
+    setneighbor!(t_ltrigs2,2,ltrigs1)
+    setneighbor!(t_ltrigs2,3,old_t1_neighbor_c)
 
     #Fix the neighbourhood relations of the previous neighbors
-    @inbounds nt2 = tess._trigs[t2._neighbour_b]
-    if nt2._neighbour_a==i
-        nt2._neighbour_a = ltrigs1
-    elseif nt2._neighbour_b==i
-        nt2._neighbour_b = ltrigs1
-    else
-        nt2._neighbour_c = ltrigs1
-    end
+    @inbounds nt_ltrigs1 = tess._trigs[getneighbor(t_ltrigs1,2)]
+    _replace_neighbor!(nt_ltrigs1,i,ltrigs1)
 
-    @inbounds nt3 = tess._trigs[t3._neighbour_c]
-    if nt3._neighbour_a==i
-        nt3._neighbour_a = ltrigs2
-    elseif nt3._neighbour_b==i
-        nt3._neighbour_b = ltrigs2
-    else
-        nt3._neighbour_c = ltrigs2
-    end
-
+    @inbounds nt_ltrigs2 = tess._trigs[getneighbor(t_ltrigs2,3)]
+    _replace_neighbor!(nt_ltrigs2,i,ltrigs2)
 
     return i
 end
 
 """
-    _flip!(tess,point_added,ix1,ix2,ot1,ot2)
+    _flip!(tess,point_added,ix1,ix2)
 
 Flips a single edge in the triangulation. 
 Here `point_added` is the index (within `ix1`, so one of 1,2,3) of the 
@@ -177,42 +174,26 @@ function _flip!(tess::DelaunayTessellation2D{T},point_added::Int64,
     #We can also safely keep `point_added_pp`
     #This means we must replace `point_added_p` (with the point that is accross
     #the edge i.e. `point_other`
-    old_ot1_geom_point_added_p = getpoint(ot1,point_added_p)
+    old_ot1_point_added_p = getpoint(ot1,point_added_p)
     setpoint!(ot1,point_added_p, getpoint(ot2,point_other))
     setneighbor!(ot1,point_added, getneighbor(ot2,point_other_pp))
-    old_ot1_neighbor_point_added_pp = getneighbor!(ot1,point_added_pp)
+    old_ot1_neighbor_point_added_pp = getneighbor(ot1,point_added_pp)
     setneighbor!(ot1,point_added_pp,ix2)
+    @inbounds ot1_neighbor = tess._trigs[getneighbor(ot1,point_added)]
+    _replace_neighbor!(ot1_neighbor,ix2,ix1)
 
 
     #Fix ot2
     new_pp = getpoint(ot2,point_other)
-    setpoint!(ot1,point_other, getpoint(ot1,point_added) )
-    setpoint!(ot1,point_other_p, old_ot1_geom_point_added_p)
-    setpoint!(ot1,point_other_pp, new_pp )
+    setpoint!(ot2,point_added, getpoint(ot1,point_added) )
+    setpoint!(ot2,point_added_p, old_ot1_point_added_p)
+    setpoint!(ot2,point_added_pp, new_pp )
 
-    setneighbor!(ot2,point_other, getneighbor!(ot2,point_other_p))
-    setneighbor!(ot2,point_other_p,ix1)
-    setneighbor!(ot2,point_other_pp,old_ot1_neighbor_point_added_pp)
-
-
-    #Fix neighbors of triangles that were not fixed
-
-    @inbounds n1 = tess._trigs[getneighbor(ot1,point_added)]
-    if getneighbor(n1,1) ==ix2
-        setneighbor!(n1,1,ix1)
-    elseif getneighbor(n1,2) == ix2
-        setneighbor!(n1,2,ix1)
-    else
-        setneighbor!(n1,3,ix1)
-    end
-    @inbounds n2 = tess._trigs[getneighbor(ot2,point_other_pp)]
-    if getneighbor(n2,1) ==ix1
-        setneighbor!(n2,1,ix2)
-    elseif getneighbor(n2,2) == ix1
-        setneighbor!(n2,2,ix2)
-    else
-        setneighbor!(n2,3,ix2)
-    end
+    setneighbor!(ot2,point_added, getneighbor(ot2,point_other_p))
+    setneighbor!(ot2,point_added_p,ix1)
+    setneighbor!(ot2,point_added_pp,old_ot1_neighbor_point_added_pp)
+    @inbounds ot2_neighbor = tess._trigs[old_ot1_neighbor_point_added_pp]
+    _replace_neighbor!(ot2_neighbor,ix1,ix2)
 
 end
 
@@ -229,16 +210,16 @@ function _restoredelaunayhood!(tess::DelaunayTessellation2D{T},
     #This is the point that was newly added
     @inbounds center_pt = geta(tess._trigs[ix_trig])
 
-    # `A` - edge
+    to_add = [ix_trig,tess._last_trig_index - 1, tess._last_trig_index]
     for j in [1,2,3]
-        push!(tess._edges_to_check, ix_trig)
+        push!(tess._edges_to_check, to_add[j])
         while length(tess._edges_to_check) > 0
             #Find the corresponding `a` vertex
             @inbounds trix = tess._edges_to_check[end]
             @inbounds tr_i = tess._trigs[trix]
             @inbounds nb_j = getneighbor(tr_i,j)
             #Check that we are not at the boundary
-            if nb_a > 1
+            if nb_j > 1
                 @inbounds tr_f = tess._trigs[nb_j]
                 if incircle(tr_f, center_pt) > 0
                     _flip!(tess,j,trix,nb_j)

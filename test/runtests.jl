@@ -1,5 +1,5 @@
 using VoronoiDelaunay
-import VoronoiDelaunay: _pushunfixed!, _flipa!, _flipb!, _flipc!
+import VoronoiDelaunay: _pushunfixed!, _flip!, getneighbor
 import GeometricalPredicates
 import GeometricalPredicates: incircle, intriangle
 using Test
@@ -24,25 +24,25 @@ using Test
         @test findindex(tess, Point2D(1.1, 1.1)) == 2
         @test findindex(tess, Point2D(1.1, 1.1)) == 2
 
-        @test tess._trigs[2]._neighbour_a == 3
+        @test getneighbor(tess._trigs[2],1) == 3
 
         _pushunfixed!(tess, Point2D(1.1, 1.1))
 
-        @test tess._trigs[2]._neighbour_a == 3
-        @test tess._trigs[2]._neighbour_b == 4
-        @test tess._trigs[2]._neighbour_c == 5
+        @test getneighbor(tess._trigs[2],1) == 3
+        @test getneighbor(tess._trigs[2],2) == 4
+        @test getneighbor(tess._trigs[2],3) == 5
 
-        @test tess._trigs[3]._neighbour_a == 2
-        @test tess._trigs[3]._neighbour_b == 1
-        @test tess._trigs[3]._neighbour_c == 1
+        @test getneighbor(tess._trigs[3],1) == 2
+        @test getneighbor(tess._trigs[3],2) == 1
+        @test getneighbor(tess._trigs[3],3) == 1
 
-        @test tess._trigs[4]._neighbour_a == 2
-        @test tess._trigs[4]._neighbour_b == 1
-        @test tess._trigs[4]._neighbour_c == 5
+        @test getneighbor(tess._trigs[4],1) == 2
+        @test getneighbor(tess._trigs[4],2) == 1
+        @test getneighbor(tess._trigs[4],3) == 5
 
-        @test tess._trigs[5]._neighbour_a == 2
-        @test tess._trigs[5]._neighbour_b == 4
-        @test tess._trigs[5]._neighbour_c == 1
+        @test getneighbor(tess._trigs[5],1) == 2
+        @test getneighbor(tess._trigs[5],2) == 4
+        @test getneighbor(tess._trigs[5],3) == 1
 
         @test getc(tess._trigs[5]) == pp
         @test geta(tess._trigs[2]) == pp
@@ -78,70 +78,70 @@ using Test
         @test getb(tess._trigs[7]) == pc
         @test getc(tess._trigs[7]) == p2
 
-        @test tess._trigs[7]._neighbour_a == 3
-        @test tess._trigs[7]._neighbour_b == 6
-        @test tess._trigs[7]._neighbour_c == 1
+        @test getneighbor(tess._trigs[7],1) == 3
+        @test getneighbor(tess._trigs[7],2) == 6
+        @test getneighbor(tess._trigs[7],3) == 1
 
         @test geta(tess._trigs[6]) == pd
         @test getb(tess._trigs[6]) == p2
         @test getc(tess._trigs[6]) == pb
 
-        @test tess._trigs[6]._neighbour_a == 3
-        @test tess._trigs[6]._neighbour_b == 1
-        @test tess._trigs[6]._neighbour_c == 7
+        @test getneighbor(tess._trigs[6],1) == 3
+        @test getneighbor(tess._trigs[6],2) == 1
+        @test getneighbor(tess._trigs[6],3) == 7
 
         @test geta(tess._trigs[3]) == p2
         @test getb(tess._trigs[3]) == pc
         @test getc(tess._trigs[3]) == pb
 
-        @test tess._trigs[3]._neighbour_a == 2
-        @test tess._trigs[3]._neighbour_b == 6
-        @test tess._trigs[3]._neighbour_c == 7
+        @test getneighbor(tess._trigs[3],1) == 2
+        @test getneighbor(tess._trigs[3],2) == 6
+        @test getneighbor(tess._trigs[3],3) == 7
 
         @test geta(tess._trigs[5]) == pa
         @test getb(tess._trigs[5]) == pb
         @test getc(tess._trigs[5]) == pp
 
-        @test tess._trigs[5]._neighbour_a == 2
-        @test tess._trigs[5]._neighbour_b == 4
-        @test tess._trigs[5]._neighbour_c == 1
+        @test getneighbor(tess._trigs[5],1) == 2
+        @test getneighbor(tess._trigs[5],2) == 4
+        @test getneighbor(tess._trigs[5],3) == 1
 
         @test geta(tess._trigs[4]) == pa
         @test getb(tess._trigs[4]) == pp
         @test getc(tess._trigs[4]) == pc
 
-        @test tess._trigs[4]._neighbour_a == 2
-        @test tess._trigs[4]._neighbour_b == 1
-        @test tess._trigs[4]._neighbour_c == 5
+        @test getneighbor(tess._trigs[4],1) == 2
+        @test getneighbor(tess._trigs[4],2) == 1
+        @test getneighbor(tess._trigs[4],3) == 5
 
         @test geta(tess._trigs[2]) == pp
         @test getb(tess._trigs[2]) == pb
         @test getc(tess._trigs[2]) == pc
 
-        @test tess._trigs[2]._neighbour_a == 3
-        @test tess._trigs[2]._neighbour_b == 4
-        @test tess._trigs[2]._neighbour_c == 5
+        @test getneighbor(tess._trigs[2],1) == 3
+        @test getneighbor(tess._trigs[2],2) == 4
+        @test getneighbor(tess._trigs[2],3) == 5
 
         @test tess._last_trig_index == 7
 
 
-        _flipa!(tess, 2, 3)
+        _flip!(tess,1, 2, 3)
 
         @test geta(tess._trigs[2]) == pp
         @test getb(tess._trigs[2]) == p2
         @test getc(tess._trigs[2]) == pc
 
-        @test tess._trigs[2]._neighbour_a == 7
-        @test tess._trigs[2]._neighbour_b == 4
-        @test tess._trigs[2]._neighbour_c == 3
+        @test getneighbor(tess._trigs[2],1) == 7
+        @test getneighbor(tess._trigs[2],2) == 4
+        @test getneighbor(tess._trigs[2],3) == 3
 
         @test geta(tess._trigs[3]) == pp
         @test getb(tess._trigs[3]) == pb
         @test getc(tess._trigs[3]) == p2
 
-        @test tess._trigs[3]._neighbour_a == 6
-        @test tess._trigs[3]._neighbour_b == 2
-        @test tess._trigs[3]._neighbour_c == 5
+        @test getneighbor(tess._trigs[3],1) == 6
+        @test getneighbor(tess._trigs[3],2) == 2
+        @test getneighbor(tess._trigs[3],3) == 5
 
         @test geta(tess._trigs[5]) == pa
         @test getb(tess._trigs[5]) == pb
@@ -159,23 +159,23 @@ using Test
         @test getb(tess._trigs[7]) == pc
         @test getc(tess._trigs[7]) == p2
 
-        @test tess._trigs[4]._neighbour_a == 2
-        @test tess._trigs[4]._neighbour_b == 1
-        @test tess._trigs[4]._neighbour_c == 5
+        @test getneighbor(tess._trigs[4],1) == 2
+        @test getneighbor(tess._trigs[4],2) == 1
+        @test getneighbor(tess._trigs[4],3) == 5
 
-        @test tess._trigs[5]._neighbour_a == 3
-        @test tess._trigs[5]._neighbour_b == 4
-        @test tess._trigs[5]._neighbour_c == 1
+        @test getneighbor(tess._trigs[5],1) == 3
+        @test getneighbor(tess._trigs[5],2) == 4
+        @test getneighbor(tess._trigs[5],3) == 1
 
-        @test tess._trigs[6]._neighbour_a == 3
-        @test tess._trigs[6]._neighbour_b == 1
-        @test tess._trigs[6]._neighbour_c == 7
+        @test getneighbor(tess._trigs[6],1) == 3
+        @test getneighbor(tess._trigs[6],2) == 1
+        @test getneighbor(tess._trigs[6],3) == 7
 
-        @test tess._trigs[7]._neighbour_a == 2
-        @test tess._trigs[7]._neighbour_b == 6
-        @test tess._trigs[7]._neighbour_c == 1
+        @test getneighbor(tess._trigs[7],1) == 2
+        @test getneighbor(tess._trigs[7],2) == 6
+        @test getneighbor(tess._trigs[7],3) == 1
 
-        _flipb!(tess, 3, 2)
+        _flip!(tess,2, 3, 2)
 
         @test geta(tess._trigs[3]) == pp
         @test getb(tess._trigs[3]) == pb
@@ -185,20 +185,20 @@ using Test
         @test getb(tess._trigs[2]) == pb
         @test getc(tess._trigs[2]) == p2
 
-        @test tess._trigs[3]._neighbour_a == 2
-        @test tess._trigs[3]._neighbour_b == 4
-        @test tess._trigs[3]._neighbour_c == 5
+        @test getneighbor(tess._trigs[3],1) == 2
+        @test getneighbor(tess._trigs[3],2) == 4
+        @test getneighbor(tess._trigs[3],3) == 5
 
-        @test tess._trigs[2]._neighbour_a == 6
-        @test tess._trigs[2]._neighbour_b == 7
-        @test tess._trigs[2]._neighbour_c == 3
+        @test getneighbor(tess._trigs[2],1) == 6
+        @test getneighbor(tess._trigs[2],2) == 7
+        @test getneighbor(tess._trigs[2],3) == 3
 
-        @test tess._trigs[6]._neighbour_a == 2
-        @test tess._trigs[7]._neighbour_a == 2
-        @test tess._trigs[5]._neighbour_a == 3
-        @test tess._trigs[4]._neighbour_a == 3
+        @test getneighbor(tess._trigs[6],1) == 2
+        @test getneighbor(tess._trigs[7],1) == 2
+        @test getneighbor(tess._trigs[5],1) == 3
+        @test getneighbor(tess._trigs[4],1) == 3
 
-        _flipc!(tess,2,3)
+        _flip!(tess,3,2,3)
 
         @test geta(tess._trigs[2]) == pp
         @test getb(tess._trigs[2]) == pb
@@ -208,25 +208,25 @@ using Test
         @test getb(tess._trigs[3]) == pp
         @test getc(tess._trigs[3]) == p2
 
-        @test tess._trigs[2]._neighbour_a == 6
-        @test tess._trigs[2]._neighbour_b == 3
-        @test tess._trigs[2]._neighbour_c == 5
+        @test getneighbor(tess._trigs[2],1) == 6
+        @test getneighbor(tess._trigs[2],2) == 3
+        @test getneighbor(tess._trigs[2],3) == 5
 
-        @test tess._trigs[3]._neighbour_a == 2
-        @test tess._trigs[3]._neighbour_b == 7
-        @test tess._trigs[3]._neighbour_c == 4
+        @test getneighbor(tess._trigs[3],1) == 2
+        @test getneighbor(tess._trigs[3],2) == 7
+        @test getneighbor(tess._trigs[3],3) == 4
 
-        @test tess._trigs[6]._neighbour_a == 2
-        @test tess._trigs[7]._neighbour_a == 3
-        @test tess._trigs[5]._neighbour_a == 2
-        @test tess._trigs[4]._neighbour_a == 3
+        @test getneighbor(tess._trigs[6],1) == 2
+        @test getneighbor(tess._trigs[7],1) == 3
+        @test getneighbor(tess._trigs[5],1) == 2
+        @test getneighbor(tess._trigs[4],1) == 3
     end
 
     @testset begin
         tess = DelaunayTessellation2D(100)
         pp = Point2D(1.45, 1.49)
         _pushunfixed!(tess, pp)
-        _flipa!(tess,2,3)
+        _flip!(tess,1,2,3)
 
         @test geta(tess._trigs[2]) == pp
         @test getb(tess._trigs[2]) == pd

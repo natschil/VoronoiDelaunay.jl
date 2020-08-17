@@ -10,7 +10,7 @@
 module VoronoiDelaunay
     using GeometricalPredicates
     const GP = GeometricalPredicates
-    #import GeometricalPredicates: geta, getb, getc
+    import GeometricalPredicates: geta, getb, getc
 
     import Base: push!, iterate, copy, sizehint!
     import Colors: RGB, RGBA
