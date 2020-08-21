@@ -4,6 +4,7 @@ import GeometricalPredicates
 import GeometricalPredicates: incircle, intriangle
 using Test
 
+
 @testset "VoronoiDelaunay tests" begin
     @testset begin
         tess = DelaunayTessellation2D(100)

@@ -2,9 +2,9 @@
 
 mutable struct DelaunayTriangle{T<:AbstractPoint2D} <: AbstractNegativelyOrientedTriangle
     #The three points of the triangle
-    points::Array{T} 
+    points::Array{T}
 
-    #TODO: Figure out what these are....
+    #Other constants required by GeometricalPredicates.jl
     _bx::Float64; _by::Float64
     _cx::Float64; _cy::Float64
 
@@ -32,6 +32,7 @@ mutable struct DelaunayTriangle{T<:AbstractPoint2D} <: AbstractNegativelyOriente
     end
 end
 
+#Get/set methods
 GP.geta(tri::DelaunayTriangle{T}) where T<:AbstractPoint2D = tri.points[1]
 GP.getb(tri::DelaunayTriangle{T}) where T<:AbstractPoint2D = tri.points[2]
 GP.getc(tri::DelaunayTriangle{T}) where T<:AbstractPoint2D = tri.points[3]
@@ -45,8 +46,6 @@ function GP.setabc(tri::DelaunayTriangle{T},vala::T,valb::T,valc::T) where T<:Ab
     clean!(tri)
     return tri
 end
-
-
 getpoint(tri::DelaunayTriangle{T}, index::Int64) where T<:AbstractPoint2D = tri.points[index]
 setpoint!(tri::DelaunayTriangle{T}, index::Int64,val::T) where T<:AbstractPoint2D = (tri.points[index] = val; clean!(tri))
 getneighbor(tri::DelaunayTriangle{T}, index::Int64) where T<:AbstractPoint2D = tri.neighbors[index]
@@ -79,46 +78,88 @@ function copy(t::DelaunayTriangle{T}) where T<:AbstractPoint2D
                      )
 end
 
-function isexternal( t::DelaunayTriangle{T}, ranges::NTuple{4,Float64} ) where T<:AbstractPoint2D
-    getx(geta(t)) < ranges[1] || getx(geta(t)) > ranges[2] ||
-    getx(getb(t)) < ranges[1] || getx(getb(t)) > ranges[2] ||
-    getx(getc(t)) < ranges[1] || getx(getc(t)) > ranges[2]
+function isexternal(t::T) where T<:AbstractPoint2D
+    return gety(t) < min_coord || gety(t) > max_coord
 end
+
+function isexternal( t::DelaunayTriangle{T}) where T<:AbstractPoint2D
+    return isexternal(geta(t)) || isexternal(getb(t)) || isexternal(getc(t))
+end
+
 
 mutable struct DelaunayTessellation2D{T<:AbstractPoint2D}
     _trigs::Vector{DelaunayTriangle{T}}
+    _nonexternal_indexes::Vector{Int64} #_nonexternal_indexes[i] gives index of ith non external triangle
+    _nonexternal_indexes_inv::Vector{Int64} # inverse of the above
     _last_trig_index::Int64 #How many of the elements in _trigs are actually being used
     _prev_trig_index::Int64 #The triangle that the previous search ended in
-    _edges_to_check::Vector{Int64}
-    _total_points_added::Int64
-    _ranges::NTuple{4,Float64}
+    _edges_to_check::Vector{Int64} #A buffer used by _restoredelaunayhood
+    _total_points_added::Int64 # Number of points added to the tesselation
+    _scaling::NTuple{4,Float64} # xmin,xwidth,ymin,yw of the domain used (relative to (min_coord, max_coord-min_coord) in each direction)
+    _invscaling::NTuple{4,Float64}
+    _convex::Bool #Triangulation has 3 points "at infinity" to enforce convexity
 
-    function DelaunayTessellation2D{T}(n::Int64 = 100) where T
+    function DelaunayTessellation2D{T}(n::Int64 = 100;convex=false) where T
         a = T(GeometricalPredicates.min_coord, GeometricalPredicates.min_coord)
         b = T(GeometricalPredicates.min_coord, GeometricalPredicates.max_coord)
         c = T(GeometricalPredicates.max_coord, GeometricalPredicates.min_coord)
         d = T(GeometricalPredicates.max_coord, GeometricalPredicates.max_coord)
-        t1 = DelaunayTriangle{T}(d,c,b, 2,1,1)
-        t2 = DelaunayTriangle{T}(a,b,c, 3,1,1)
-        t3 = DelaunayTriangle{T}(d,c,b, 2,1,1)
-        _trigs = DelaunayTriangle{T}[t1, t2, t3]
-        _ranges=(min_coord,max_coord,min_coord,max_coord)
-        t = new(_trigs, 3,1, Int64[], 0,_ranges)
+        e = T(0.5*(GeometricalPredicates.min_coord + GeometricalPredicates.max_coord), GeometricalPredicates.max_coord)
+        _scaling=(0.0,1.0,0.0,1.0)
+        if !convex
+            t1 = DelaunayTriangle{T}(d,c,b, 2,1,1) #Here t1 is a "dummy" triangle that is not part of the domain
+            t2 = DelaunayTriangle{T}(a,b,c, 3,1,1)
+            t3 = DelaunayTriangle{T}(d,c,b, 2,1,1)
+            _trigs = DelaunayTriangle{T}[t1, t2, t3]
+            _nonexternal_indexes = Int64[0,0,0]
+            t = new(_trigs,_nonexternal_indexes,copy(_nonexternal_indexes), 3,2, Int64[], 0,_scaling,_scaling,false)
+        else
+            t1 = DelaunayTriangle{T}(a,e,c,1,1,1) #Dummy triangle
+            t2 = DelaunayTriangle{T}(a,e,c,1,1,1)
+            _trigs = DelaunayTriangle{T}[t1, t2]
+            _nonexternal_indexes = Int64[0,0,0]
+            t = new(_trigs,_nonexternal_indexes, copy(_nonexternal_indexes)r 2,2, Int64[], 0,_scaling,_scaling,true)
+        end
         sizehint!(t._edges_to_check, 1000)
         sizehint!(t, n)
         return t
     end
 end
-DelaunayTessellation2D(n::Int64) = DelaunayTessellation2D{Point2D}(n)
-DelaunayTessellation2D(n::Int64, ::T) where {T<:AbstractPoint2D} = DelaunayTessellation2D{T}(n)
-DelaunayTessellation(n::Int64=100) = DelaunayTessellation2D(n)
+DelaunayTessellation2D(n::Int64;convex=false) = DelaunayTessellation2D{Point2D}(n;convex=convex)
+DelaunayTessellation2D(n::Int64, ::T;convex=false) where {T<:AbstractPoint2D} = DelaunayTessellation2D{T}(n; convex=convex)
+DelaunayTessellation(n::Int64=100; convex=false) = DelaunayTessellation2D(n;convex=convex)
+
+function _clean_nonexternal_indexes!(tess)
+    j = 1
+    for (i,t) in enumerate(tess._trigs)
+        if i > tess._last_trig_index
+            tess._nonexternal_indexes_inv[i] = 0
+            continue
+        end
+        if isexternal(t)
+            tess._nonexternal_indexes_inv[i] = 0
+            continue
+        else
+            tess._nonexternal_indexes[j] = i
+            tess._nonexternal_indexes_inv[i] = j
+            j += 1
+        end
+    end
+    for i in j:length(tess._nonexternal_indexes)
+        tess._nonexternal_indexes[i] = 0
+    end
+    return 0
+end
 
 function sizehint!(t::DelaunayTessellation2D{T}, n::Int64) where T<:AbstractPoint2D
     required_total_size = 2n + 10
     required_total_size <= length(t._trigs) && return
     sizehint!(t._trigs, required_total_size)
+    sizehint!(t._nonexternal_indexes, required_total_size)
     while length(t._trigs) < required_total_size
         push!(t._trigs, copy(t._trigs[end]))
+        push!(t._nonexternal_indexes, 0)
+        push!(t._nonexternal_indexes_inv, 0)
     end
     return t
 end
@@ -152,25 +193,25 @@ getb(e::VoronoiEdgeWithoutGenerators) = e._b
 
 # TODO: is an iterator faster?
 function delaunayedges( t::DelaunayTessellation2D,include_external=false)
-    ranges = t._ranges
+    sc = t._invscaling
     visited = zeros(Bool, t._last_trig_index)
     function delaunayiterator(c::Channel)
         @inbounds for ix in 2:t._last_trig_index
             tr = t._trigs[ix]
-            !include_external && isexternal( tr, ranges ) && continue
+            !include_external && isexternal( tr ) && continue
             visited[ix] && continue
             visited[ix] = true
             ix_na = getneighbor(tr,1)
             if !visited[ix_na]
-                put!(c, DelaunayEdge(getb(tr), getc(tr)))
+                put!(c, DelaunayEdge(rescale(getb(tr),sc), rescale(getc(tr),sc)))
             end
             ix_nb = getneighbor(tr,2)
             if !visited[ix_nb]
-                put!(c, DelaunayEdge(geta(tr), getc(tr)))
+                put!(c, DelaunayEdge(rescale(geta(tr),sc), rescale(getc(tr),sc)))
             end
             ix_nc = getneighbor(tr,3)
             if !visited[ix_nc]
-                put!(c, DelaunayEdge(geta(tr), getb(tr)))
+                put!(c, DelaunayEdge(rescale(geta(tr),sc), rescale(getb(tr),sc)))
             end
         end
     end
@@ -179,6 +220,9 @@ end
 
 # TODO: is an iterator faster?
 function voronoiedges(t::DelaunayTessellation2D)
+    if tess._convex
+        error("voronoiedges has not been implemented for tess._convex == true")
+    end
     visited = zeros(Bool, t._last_trig_index)
     visited[1] = true
     function voronoiiterator(c::Channel)
@@ -247,9 +291,8 @@ end
 
 
 function iterate( t::DelaunayTessellation2D, it::TrigIter=TrigIter(2) ) # default it resembles old start
-    ranges = t._ranges
     # resembles old done
-    while isexternal(t._trigs[it.ix], ranges) && it.ix <= t._last_trig_index
+    while isexternal(t._trigs[it.ix]) && it.ix <= t._last_trig_index
         it.ix += 1
     end
     if it.ix > t._last_trig_index
@@ -261,11 +304,11 @@ function iterate( t::DelaunayTessellation2D, it::TrigIter=TrigIter(2) ) # defaul
     return (trig, it)
 end
 
-function findindex(tess::DelaunayTessellation2D{T}, p::T) where T<:AbstractPoint2D
-    #i::Int64 = tess._prev_trig_index
-    i::Int64 = tess._last_trig_index
+function _findindex(tess::DelaunayTessellation2D{T}, p::S) where {T<:AbstractPoint2D, S<:AbstractPoint2D}
+    i::Int64 = tess._prev_trig_index
+    #i::Int64 = tess._last_trig_index
     counter::Int64 = 0
-    ntriangles = length(tess._trigs)
+    ntriangles = tess._last_trig_index
     while true
         counter += 1
         @inbounds w = intriangle(tess._trigs[i], p)
@@ -287,7 +330,46 @@ function findindex(tess::DelaunayTessellation2D{T}, p::T) where T<:AbstractPoint
     end
 end
 
-locate(t::DelaunayTessellation2D{T}, p::T) where {T<:AbstractPoint2D} = t._trigs[findindex(t, p)]
+function triangles(tess::DelaunayTessellation2D{T}) where T<:AbstractPoint2D
+    res = NTuple{3,T}[]
+    sc = tess._invscaling
+    for (i,t) in enumerate(tess._trigs)
+        if i > tess._last_trig_index
+            break
+        end
+        isexternal(t) && continue
+        push!(res,(rescale(geta(t),sc), rescale(getb(t),sc), rescale(getc(t),sc)))
+    end
+    return res
+end
+
+function Base.getindex(tess,i)
+        if i > tess._last_trig_index
+            error("Out of bounds")
+        end
+        newindex = tess._nonexternal_indexes[i]
+        if newindex == 0
+            error("Out of bounds")
+        end
+        t = tess._trigs[newindex]
+        sc = tess._invscaling
+        return (rescale(geta(t),sc), rescale(getb(t),sc), rescale(getc(t),sc))
+end
+
+function Base.show(io::IO,tess::DelaunayTessellation2D{T}) where {T<:AbstractPoint2D}
+    println(io,"DelaunayTesselation2D object with triangles:")
+    Base.show(triangles(tess))
+end
+
+_locate(t::DelaunayTessellation2D{T}, p::S) where {T<:AbstractPoint2D, S<:AbstractPoint2D} = t._trigs[_findindex(t, p)]
+
+function locate(t::DelaunayTessellation2D{T},p::S) where {T<:AbstractPoint2D, S<:AbstractPoint2D}
+    ind = _locate(t,rescale(p,t._scaling))
+    if isexternal(t)
+        error("Point is outside of triangulation")
+    end
+    return (rescale(geta(t),tess._invscaling),rescale(getb(t),tess._invscaling),rescale(getb(t),tess._invscaling))
+end
 
 
 movea(tess::DelaunayTessellation2D{T},
@@ -296,7 +378,3 @@ moveb(tess::DelaunayTessellation2D{T},
       trig::DelaunayTriangle{T}) where {T<:AbstractPoint2D} = tess._trigs[getneighbor(trig,2)]
 movec(tess::DelaunayTessellation2D{T},
       trig::DelaunayTriangle{T}) where {T<:AbstractPoint2D} = tess._trigs[getneighbor(trig,3)]
-
-
-
-

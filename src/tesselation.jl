@@ -1,8 +1,8 @@
 """
     DelaunayTesselation(points)
 
-Returns a Delaunay Tesselation of the points in `points`. 
-The result is convex. The points in `points` are not required 
+Returns a Delaunay Tesselation of the points in `points`.
+The result is convex. The points in `points` are not required
 to be in [1,2]x[1,2]
 """
 function DelaunayTessellation( points::Array{T,1} ) where T<:AbstractPoint2D
@@ -84,16 +84,16 @@ end
 
 #Finds out in which triangle the point was, and then "splits" the triangle in question into three sub-triangles
 #This function does *not* enforce the delaunay property!
-function _pushunfixed!(tess::DelaunayTessellation2D{T}, p::T) where T<:AbstractPoint2D
+function _pushunfixed!(tess::DelaunayTessellation2D{T}, p::T,clean=true) where T<:AbstractPoint2D
     #Find out which triangle the point `p` is in
-    i = findindex(tess, p)
-    
+    i = _findindex(tess, p)
+
     #Add two new triangles at the end of the list
     ltrigs1::Int64 = tess._last_trig_index+1
     ltrigs2::Int64 = tess._last_trig_index+2
     tess._last_trig_index += 2
 
-    #Modify the current triangle to be one of the three new triangles 
+    #Modify the current triangle to be one of the three new triangles
     #The point being added is vertex "a"
     @inbounds t1 = tess._trigs[i]
     old_t1_a = geta(t1)
@@ -126,16 +126,20 @@ function _pushunfixed!(tess::DelaunayTessellation2D{T}, p::T) where T<:AbstractP
     @inbounds nt_ltrigs2 = tess._trigs[getneighbor(t_ltrigs2,3)]
     _replace_neighbor!(nt_ltrigs2,i,ltrigs2)
 
+    if clean
+        _clean_nonexternal_indexes!(tess)
+    end
+
     return i
 end
 
 """
     _flip!(tess,point_added,ix1,ix2)
 
-Flips a single edge in the triangulation. 
-Here `point_added` is the index (within `ix1`, so one of 1,2,3) of the 
-new point that was added. 
-Here `ix1` is the triangle that has this point as its vertex 
+Flips a single edge in the triangulation.
+Here `point_added` is the index (within `ix1`, so one of 1,2,3) of the
+new point that was added.
+Here `ix1` is the triangle that has this point as its vertex
 and the edge to be flipped opposite to it.
 Here `ix2` is the triangle on the other side of this edge.
 
@@ -168,7 +172,7 @@ function _flip!(tess::DelaunayTessellation2D{T},point_added::Int64,
     point_other_pp = mod1(point_other+2,3)
 
     #Flip the edge
-    
+
     #First we fix ot1
     #We can keep `point_added` in the triangle.
     #We can also safely keep `point_added_pp`
@@ -198,9 +202,53 @@ function _flip!(tess::DelaunayTessellation2D{T},point_added::Int64,
 end
 
 """
+    _should_flip_edge(tri_center_point,tri,center_pt)
+
+If `tri` contains only non-external nodes, this is equivalent to
+`incircle(tri, center_pt) > 0`. Otherwise, external nodes are treated as being points "at infinity".
+
+"""
+function _should_flip_edge(tri_center_point, tri,center_pt,convex)
+        if !convex
+            return incircle(tri, center_pt) > 0
+        end
+        nexternal::Int64 = 0
+        last_external::Int64 = 1
+        for i in 1:3
+            curpt = getpoint(tri,i)
+            if isexternal(curpt)
+                nexternal += 1
+                last_external = i
+            end
+        end
+
+        if nexternal == 0
+            return incircle(tri, center_pt) > 0
+        end
+
+        if nexternal >= 2
+            return false
+        end
+
+        #We have only one external edge
+
+        if getneighbor(tri,last_external) == tri_center_point
+            return false
+        end
+
+        last_external_p = mod1(last_external + 1,3)
+        last_external_pp = mod1(last_external_p + 1,3)
+
+        l = Line2D(getpoint(tri,last_external_p),getpoint(tri,last_external_pp))
+        o1 = orientation(l,getpoint(tri,last_external))
+        o2 = orientation(l,center_pt)
+        return o1 == o2
+end
+
+"""
     _restoredelaunayhood!(tess,ix_trig)
 
-Restores the Delaunay property by flipping edges. 
+Restores the Delaunay property by flipping edges.
 Here `ix_trig` is the index of the triangle whose `a` vertex
 is the new point that was added (see `_pushunfixed`) and whose `b`
 and `c` neighbors are the other "new" triangles.
@@ -221,7 +269,7 @@ function _restoredelaunayhood!(tess::DelaunayTessellation2D{T},
             #Check that we are not at the boundary
             if nb_j > 1
                 @inbounds tr_f = tess._trigs[nb_j]
-                if incircle(tr_f, center_pt) > 0
+                if _should_flip_edge(trix,tr_f,center_pt,tess._convex)
                     _flip!(tess,j,trix,nb_j)
                     push!(tess._edges_to_check, nb_j)
                     continue
@@ -230,28 +278,115 @@ function _restoredelaunayhood!(tess::DelaunayTessellation2D{T},
             pop!(tess._edges_to_check)
         end
     end
+
+    _clean_nonexternal_indexes!(tess)
 end
 
+
+
+const _p1 = Point2D(min_coord, min_coord)
+const _p2 = Point2D(0.5*(GeometricalPredicates.min_coord + GeometricalPredicates.max_coord),max_coord)
+const _p3 = Point2D(max_coord, min_coord)
+const ref_tri = DelaunayTriangle{Point2D}(_p1,_p2,_p3, 1,1,1)
+
+function in_base_square_domain(p::T) where T<:AbstractPoint2D
+    if getx(p) <= min_coord || getx(p) >= max_coord
+        return false
+    end
+    if gety(p) <= min_coord || gety(p) >= max_coord
+        return false
+    end
+    return true
+end
+
+
+function _in_ref_tri(p::T) where T<:AbstractPoint2D
+    if !in_base_square_domain(p)
+        return false
+    end
+    
+    w = intriangle(ref_tri, p)
+    return w > 0
+end
+
+function rescale!(tess::DelaunayTessellation2D{T},new_scaling) where T <: AbstractPoint2D
+    new_scaling_r =  composescaling(new_scaling,tess._invscaling)
+    convex = tess._convex
+    for (index,tri) in enumerate(tess._trigs)
+        for j in 1:3
+            p = getpoint(tri,j)
+            isexternal(p) && continue
+            setpoint!(tri,j, rescale(p,new_scaling_r))
+        end
+    end
+    tess._scaling = new_scaling
+    tess._invscaling = invertscaling(tess._scaling)
+end
+
+
+
 # push a single point. Grows tessellation as needed
-function push!(tess::DelaunayTessellation2D{T}, p::T) where T<:AbstractPoint2D
+function push!(tess::DelaunayTessellation2D{T}, p::T,clean=true) where T<:AbstractPoint2D
     tess._total_points_added += 1
     sizefit_at_least(tess, tess._total_points_added)
-    i = _pushunfixed!(tess, p)
+
+    if tess._convex
+        new_pt = rescale(p,tess._scaling) 
+        if ! _in_ref_tri(new_pt)
+            invscale = tess._invscaling
+            p0 = rescale(Point2D(min_coord + 1/4 + eps(),min_coord),invscale)
+            p1 = rescale(Point2D(min_coord + 3/4, min_coord + 1/2 ),invscale)
+            maxx = max(getx(p1),getx(p))
+            maxy = max(gety(p1),gety(p))
+
+            minx = min(getx(p0),getx(p))
+            miny = min(gety(p0),gety(p))
+
+            widthx = maxx - minx
+            widthy = maxy - miny
+            
+            newwidth = max(widthx,widthy)
+
+            #Add a bit of a safety factor so we don't do this too often
+            default_x = (min_coord + 1/4 )
+            default_y = min_coord
+            default_width = 1/2
+            tosquare = invertscaling((default_x,default_width,default_y,default_width))
+
+            new_scaling = composescaling(tosquare ,(minx - 0.1*newwidth,1.5*newwidth,miny - 0.1*newwidth,1.5*newwidth))
+
+            rescale!(tess,new_scaling)
+            new_pt = rescale(p,tess._scaling)
+
+        end
+    else
+        new_pt = p
+        if !in_base_square_domain(new_pt)
+            error("Trying to add point that is out of bounds")
+        end
+    end
+
+    i = _pushunfixed!(tess, new_pt,false)
     _restoredelaunayhood!(tess, i)
+    if clean
+        _clean_nonexternal_indexes!(tess)
+    end
 end
 
 # push an array in given order
-function _pushunsorted!(tess::DelaunayTessellation2D{T}, a::Array{T, 1}) where T<:AbstractPoint2D
+function _pushunsorted!(tess::DelaunayTessellation2D{T}, a::Array{T, 1},clean=true) where T<:AbstractPoint2D
     sizehint!(tess, length(a))
     for p in a
-        push!(tess, p)
+        push!(tess, p,false)
+    end
+    if clean
+        _clean_nonexternal_indexes!(tess)
     end
 end
 
 # push an array but sort it first for better performance
-function push!(tess::DelaunayTessellation2D{T}, a::Array{T, 1}) where T<:AbstractPoint2D
+function push!(tess::DelaunayTessellation2D{T}, a::Array{T, 1},clean=true) where T<:AbstractPoint2D
     shuffle!(a)
     mssort!(a)
-    _pushunsorted!(tess, a)
+    _pushunsorted!(tess, a,clean)
 end
-

@@ -21,10 +21,11 @@ module VoronoiDelaunay
     const max_coord = GeometricalPredicates.max_coord - eps(Float64)
 
     include("exports.jl")
-    include("VoronoiDelaunayExtensions.jl")
+    include("scaling.jl")
     include("datastructures.jl")
     include("tesselation.jl")
     include("images.jl")
     include("plotting.jl")
+    include("delaunay2.jl")
 
 end 

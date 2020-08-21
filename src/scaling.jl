@@ -1,23 +1,34 @@
-# scale the point set down such that the union of all circumcircles lies within the square frame.
-# this does not only allow for arbitrary point distributions, but more importantly
-# ensures convexity (and correctness) of the resulting Delaunay triangulation.
+"""
+end
+   rescale(point,scalefactor)
 
-function scaleShiftPoints( points::Array{T,1} ) where T<:AbstractPoint2D
-  # convex hull of point set to find the outer edges
-  hull = quickHull( points )
-  # union of the outer circumcircles
-  ccu = circumcircleUnion( hull, points )
-  # frame around the union of circumcircles
-  ranges = frameRanges( ccu )
-  # scale the point set down to the initial square
-  scaledPoints = shrink( points, ranges )
-  # do the tessellation on the scaled point set,
-  # use the ranges to convert back to original scale afterwards
-  return scaledPoints, ranges
+Creates a new point with x coordinates `(getx(point) - scalefactor[1])/scalefactor[2] ` as x-coordinate and y coordinate
+given by `(gety(point) - scalefactor[3])/scalefactor[4]`
+"""
+function rescale( point::Point2D, scalefactor::NTuple{4,Float64})
+    return Point2D((getx(point) - scalefactor[1])/scalefactor[2], (gety(point) - scalefactor[3])/scalefactor[4])
 end
 
-# convert the edge points back to original scale after the tessellation
+"""
+    rescale(points,scalefactor)
+Applies `rescale` pointwise to the array of points
+"""
 
+function rescale( points::AbstractArray{T}, scalefactor::NTuple{4,Float64}) where T <: AbstractPoint2D
+    return map(rescale,points)
+end
+
+function invertscaling(scalefactor::NTuple{4,Float64})
+    return (-scalefactor[1]/scalefactor[2], 1/scalefactor[2], -scalefactor[3]/scalefactor[4],1/scalefactor[4])
+end
+
+function composescaling(s2::NTuple{4,Float64},s1::NTuple{4,Float64})
+    return (s1[1] + s2[1]*s1[2], s1[2]*s2[2], s1[3] + s2[3]*s1[4], s1[4]*s2[4])
+end
+
+
+
+#=
 function expand( points::Array{Point2D,1}, ranges::NTuple{4,Float64} )
   xmin = ranges[1]
   ymin = ranges[3]
@@ -33,13 +44,14 @@ function shrink( points::Array{Point2D,1}, ranges::NTuple{4,Float64} )
   scale = 0.98 / max( h, b )
   scaledPoints = [ Point2D( ( p._x - ranges[1] ) * scale + offset, ( p._y - ranges[3] ) * scale + offset ) for p in points ]
 end
+=#
 
 
 
 #=== auxiliary functions and structs ===#
 
 # convex hull of point set
-
+#=
 function quickHull(points::Array{T,1}) where T<:AbstractPoint2D
     return quickHull(Point2D.(points))
 end
@@ -174,3 +186,4 @@ function frameRanges( ccU::Array{Circle{T},1} ) where T<:AbstractPoint2D
   ymax = maximum( getceny.(ccU) .+ getrad.(ccU) )
   return xmin, xmax, ymin, ymax
 end
+=#

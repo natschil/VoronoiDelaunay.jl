@@ -30,7 +30,9 @@ export
     scaleShiftPoints,
     expand,
     Triple,
-    DelaunayTriangle
+    DelaunayTriangle,
+    triangles,
+    Delaunay2
 
 
 
