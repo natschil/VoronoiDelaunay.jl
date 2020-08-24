@@ -18,12 +18,53 @@ function rescale( points::AbstractArray{T}, scalefactor::NTuple{4,Float64}) wher
     return map(rescale,points)
 end
 
+"""
+   invertscaling(scalefactor)
+Returns a 4-tuple `res` so that `rescale(p,res)` is the inverse to `rescale(p,scalefactor)`
+"""
 function invertscaling(scalefactor::NTuple{4,Float64})
     return (-scalefactor[1]/scalefactor[2], 1/scalefactor[2], -scalefactor[3]/scalefactor[4],1/scalefactor[4])
 end
 
+"""
+    composescaling(s, t)
+Takes 4-tuples `s` and `t` and returns a 4-tuple `res` that satisfies
+rescale(p,`res`) = rescale(s,rescale(t,p))`. 
+"""
 function composescaling(s2::NTuple{4,Float64},s1::NTuple{4,Float64})
     return (s1[1] + s2[1]*s1[2], s1[2]*s2[2], s1[3] + s2[3]*s1[4], s1[4]*s2[4])
+end
+
+"""
+    get_new_scaling(invscale_old,p1,p2)
+
+Calculates a scaling so that invscale_old(S), p1 and p2 are all mapped to S, where S is the
+square with lower left `min_coord + 1/4, min_coord`  and height/width 1/2.
+Includes a small safety factor
+
+"""
+function get_new_scaling(invscale_old::NTuple{4,Float64}, p3::T, p4::T ) where T <: AbstractPoint2D
+            p0 = rescale(Point2D(min_coord + 1/4 + eps(),min_coord),invscale_old)
+            p1 = rescale(Point2D(min_coord + 3/4, min_coord + 1/2 ),invscale_old)
+            maxx = max(max(getx(p1),getx(p3),getx(p4)))
+            maxy = max(max(gety(p1),gety(p3)),gety(p4))
+
+            minx = min(min(getx(p0),getx(p3)),getx(p4))
+            miny = min(min(gety(p0),gety(p3)),gety(p4))
+
+            widthx = maxx - minx
+            widthy = maxy - miny
+            
+            newwidth = max(widthx,widthy)
+
+            #Add a bit of a safety factor so we don't do this too often
+            default_x = (min_coord + 1/4 )
+            default_y = min_coord
+            default_width = 1/2
+            tosquare = invertscaling((default_x,default_width,default_y,default_width))
+
+            new_scaling = composescaling(tosquare ,(minx - 0.1*newwidth,1.5*newwidth,miny - 0.1*newwidth,1.5*newwidth))
+            return new_scaling
 end
 
 

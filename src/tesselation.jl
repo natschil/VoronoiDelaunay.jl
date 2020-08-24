@@ -6,10 +6,8 @@ The result is convex. The points in `points` are not required
 to be in [1,2]x[1,2]
 """
 function DelaunayTessellation( points::Array{T,1} ) where T<:AbstractPoint2D
-  scaledPoints, ranges = scaleShiftPoints( points )
-  scaledTess = DelaunayTessellation2D{T}(length( points ))
-  push!( scaledTess, scaledPoints )
-  tess = expand( scaledTess, ranges )
+  tess = DelaunayTessellation2D{T}(length( points ),convex=true)
+  push!( tess, points )
   return tess
 end
 
@@ -334,27 +332,7 @@ function push!(tess::DelaunayTessellation2D{T}, p::T,clean=true) where T<:Abstra
         new_pt = rescale(p,tess._scaling) 
         if ! _in_ref_tri(new_pt)
             invscale = tess._invscaling
-            p0 = rescale(Point2D(min_coord + 1/4 + eps(),min_coord),invscale)
-            p1 = rescale(Point2D(min_coord + 3/4, min_coord + 1/2 ),invscale)
-            maxx = max(getx(p1),getx(p))
-            maxy = max(gety(p1),gety(p))
-
-            minx = min(getx(p0),getx(p))
-            miny = min(gety(p0),gety(p))
-
-            widthx = maxx - minx
-            widthy = maxy - miny
-            
-            newwidth = max(widthx,widthy)
-
-            #Add a bit of a safety factor so we don't do this too often
-            default_x = (min_coord + 1/4 )
-            default_y = min_coord
-            default_width = 1/2
-            tosquare = invertscaling((default_x,default_width,default_y,default_width))
-
-            new_scaling = composescaling(tosquare ,(minx - 0.1*newwidth,1.5*newwidth,miny - 0.1*newwidth,1.5*newwidth))
-
+            new_scaling = get_new_scaling(invscale,p,p)
             rescale!(tess,new_scaling)
             new_pt = rescale(p,tess._scaling)
 
@@ -388,5 +366,18 @@ end
 function push!(tess::DelaunayTessellation2D{T}, a::Array{T, 1},clean=true) where T<:AbstractPoint2D
     shuffle!(a)
     mssort!(a)
+    if tess._convex
+        maxx = maximum([getx(p) for p in a])
+        minx = minimum([getx(p) for p in a])
+        maxy = maximum([gety(p) for p in a])
+        miny = minimum([gety(p) for p in a])
+        p1 = Point2D(minx,miny)
+        p2 = Point2D(maxx,maxy)
+        if ! _in_ref_tri(rescale(p1,tess._scaling)) || ! _in_ref_tri(rescale(p2,tess._scaling))
+            invscale = tess._invscaling
+            new_scaling = get_new_scaling(invscale,p1,p2)
+            rescale!(tess,new_scaling)
+        end
+    end
     _pushunsorted!(tess, a,clean)
 end

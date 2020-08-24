@@ -1,5 +1,5 @@
 using VoronoiDelaunay
-import VoronoiDelaunay: _pushunfixed!, _flip!, getneighbor
+import VoronoiDelaunay: _pushunfixed!, _flip!, getneighbor,_findindex,_locate
 import GeometricalPredicates
 import GeometricalPredicates: incircle, intriangle
 using Test
@@ -8,9 +8,9 @@ using Test
 @testset "VoronoiDelaunay tests" begin
     @testset begin
         tess = DelaunayTessellation2D(100)
-        @test findindex(tess, Point2D(1.1, 1.1)) == 2
-        @test findindex(tess, Point2D(1.9, 1.9)) == 3
-        @test findindex(tess, Point2D(1.9, 1.9)) == 3
+        @test _findindex(tess, Point2D(1.1, 1.1)) == 2
+        @test _findindex(tess, Point2D(1.9, 1.9)) == 3
+        @test _findindex(tess, Point2D(1.9, 1.9)) == 3
     end
 
     pa = Point2D(GeometricalPredicates.min_coord, GeometricalPredicates.min_coord)
@@ -21,9 +21,9 @@ using Test
 
     @testset begin
         tess = DelaunayTessellation2D(100)
-        @test findindex(tess, Point2D(1.9, 1.9)) == 3
-        @test findindex(tess, Point2D(1.1, 1.1)) == 2
-        @test findindex(tess, Point2D(1.1, 1.1)) == 2
+        @test _findindex(tess, Point2D(1.9, 1.9)) == 3
+        @test _findindex(tess, Point2D(1.1, 1.1)) == 2
+        @test _findindex(tess, Point2D(1.1, 1.1)) == 2
 
         @test getneighbor(tess._trigs[2],1) == 3
 
@@ -62,15 +62,15 @@ using Test
 
         @test geta(tess._trigs[3]) == pd
 
-        @test findindex(tess, Point2D(1.01, 1.1)) == 5
-        @test findindex(tess, Point2D(1.1, 1.01)) == 4
+        @test _findindex(tess, Point2D(1.01, 1.1)) == 5
+        @test _findindex(tess, Point2D(1.1, 1.01)) == 4
 
-        @test findindex(tess, Point2D(1.11, 1.11)) == 2
-        @test findindex(tess, Point2D(1.6, 1.6)) == 3
-        @test findindex(tess, Point2D(1.11, 1.1101)) == 2
-        @test findindex(tess, Point2D(1.6, 1.601)) == 3
-        @test findindex(tess, Point2D(1.11, 1.11)) == 2
-        @test findindex(tess, Point2D(1.6, 1.6)) == 3
+        @test _findindex(tess, Point2D(1.11, 1.11)) == 2
+        @test _findindex(tess, Point2D(1.6, 1.6)) == 3
+        @test _findindex(tess, Point2D(1.11, 1.1101)) == 2
+        @test _findindex(tess, Point2D(1.6, 1.601)) == 3
+        @test _findindex(tess, Point2D(1.11, 1.11)) == 2
+        @test _findindex(tess, Point2D(1.6, 1.6)) == 3
 
         p2 = Point2D(1.9,1.9)
         _pushunfixed!(tess, p2)
@@ -314,7 +314,7 @@ using Test
                     Point2D(-1.5991536318191626, -1.3063986775765466) ];
         tess = DelaunayTessellation( points )
         t = locate( tess, Point2D(0.6, 0.6) )
-        @test !isexternal( t, tess._ranges )
+        @test Point2D(0.16249186899931745, -0.19919450833195929) ∈ t
     end
 
 end

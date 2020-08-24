@@ -2,7 +2,10 @@
 
 mutable struct DelaunayTriangle{T<:AbstractPoint2D} <: AbstractNegativelyOrientedTriangle
     #The three points of the triangle
-    points::Array{T}
+    #points::Array{T}
+    point_a::T
+    point_b::T
+    point_c::T
 
     #Other constants required by GeometricalPredicates.jl
     _bx::Float64; _by::Float64
@@ -12,11 +15,14 @@ mutable struct DelaunayTriangle{T<:AbstractPoint2D} <: AbstractNegativelyOriente
     _pr2::Float64
 
     #Indexes of neighboring points
-    neighbors::Array{Int64}
+    #neighbors::Array{Int64}
+    neighbor_a::Int64
+    neighbor_b::Int64
+    neighbor_c::Int64
 
     function DelaunayTriangle{T}(pa::T, pb::T, pc::T,
                                  na::Int64, nb::Int64, nc::Int64) where {T<:AbstractPoint2D}
-        t = new([pa, pb, pc], 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, [na, nb, nc])
+        t = new(pa, pb, pc, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, na, nb, nc)
         clean!(t)
         return t
     end
@@ -28,28 +34,62 @@ mutable struct DelaunayTriangle{T<:AbstractPoint2D} <: AbstractNegativelyOriente
                                  px::Float64, py::Float64,
                                  pr2::Float64,
                                  na::Int64, nb::Int64, nc::Int64) where {T<:AbstractPoint2D}
-        new([pa, pb, pc], bx, by, cx, cy, px, py, pr2, [na, nb, nc])
+        new(pa, pb, pc, bx, by, cx, cy, px, py, pr2, na, nb, nc)
     end
 end
 
 #Get/set methods
-GP.geta(tri::DelaunayTriangle{T}) where T<:AbstractPoint2D = tri.points[1]
-GP.getb(tri::DelaunayTriangle{T}) where T<:AbstractPoint2D = tri.points[2]
-GP.getc(tri::DelaunayTriangle{T}) where T<:AbstractPoint2D = tri.points[3]
-GP.seta(tri::DelaunayTriangle{T},val::T) where T<:AbstractPoint2D = (tri.points[1] = val; clean!(tri))
-GP.setb(tri::DelaunayTriangle{T},val::T) where T<:AbstractPoint2D = (tri.points[2] = val;clean!(tri))
-GP.setc(tri::DelaunayTriangle{T},val::T) where T<:AbstractPoint2D = (tri.points[3] = val;clean!(tri))
+GP.geta(tri::DelaunayTriangle{T}) where T<:AbstractPoint2D = tri.point_a
+GP.getb(tri::DelaunayTriangle{T}) where T<:AbstractPoint2D = tri.point_b
+GP.getc(tri::DelaunayTriangle{T}) where T<:AbstractPoint2D = tri.point_c
+GP.seta(tri::DelaunayTriangle{T},val::T) where T<:AbstractPoint2D = (tri.point_a = val; clean!(tri))
+GP.setb(tri::DelaunayTriangle{T},val::T) where T<:AbstractPoint2D = (tri.point_b = val;clean!(tri))
+GP.setc(tri::DelaunayTriangle{T},val::T) where T<:AbstractPoint2D = (tri.point_c = val;clean!(tri))
 function GP.setabc(tri::DelaunayTriangle{T},vala::T,valb::T,valc::T) where T<:AbstractPoint2D
-    tri.points[1] = vala
-    tri.points[2] = valb
-    tri.points[3] = valc
+    tri.point_a = vala
+    tri.point_b = valb
+    tri.point_c = valc
     clean!(tri)
     return tri
 end
-getpoint(tri::DelaunayTriangle{T}, index::Int64) where T<:AbstractPoint2D = tri.points[index]
-setpoint!(tri::DelaunayTriangle{T}, index::Int64,val::T) where T<:AbstractPoint2D = (tri.points[index] = val; clean!(tri))
-getneighbor(tri::DelaunayTriangle{T}, index::Int64) where T<:AbstractPoint2D = tri.neighbors[index]
-setneighbor!(tri::DelaunayTriangle{T}, index::Int64,val::Int64) where T<:AbstractPoint2D = (tri.neighbors[index] = val)
+function getpoint(tri::DelaunayTriangle{T}, index::Int64) where T<:AbstractPoint2D
+    if index == 1
+        return tri.point_a
+    elseif index == 2
+        return tri.point_b
+    else
+        return tri.point_c
+    end
+end
+function setpoint!(tri::DelaunayTriangle{T}, index::Int64,val::T) where T<:AbstractPoint2D
+    if index == 1
+        tri.point_a = val
+    elseif index == 2
+        tri.point_b = val
+    else
+        tri.point_c = val
+    end
+    clean!(tri)
+end
+
+function getneighbor(tri::DelaunayTriangle{T}, index::Int64) where T<:AbstractPoint2D 
+    if index == 1
+        return tri.neighbor_a
+    elseif index == 2
+        return tri.neighbor_b
+    else
+        return tri.neighbor_c
+    end
+end
+function setneighbor!(tri::DelaunayTriangle{T}, index::Int64,val::Int64) where T<:AbstractPoint2D
+    if index == 1
+        tri.neighbor_a = val
+    elseif index == 2
+        tri.neighbor_b = val
+    else
+        tri.neighbor_c = val
+    end
+end
 
 #=TODO: Figure out if the two functions below are needed or not...
 function DelaunayTriangle(pa::T, pb::T, pc::T,
@@ -118,7 +158,7 @@ mutable struct DelaunayTessellation2D{T<:AbstractPoint2D}
             t2 = DelaunayTriangle{T}(a,e,c,1,1,1)
             _trigs = DelaunayTriangle{T}[t1, t2]
             _nonexternal_indexes = Int64[0,0,0]
-            t = new(_trigs,_nonexternal_indexes, copy(_nonexternal_indexes)r 2,2, Int64[], 0,_scaling,_scaling,true)
+            t = new(_trigs,_nonexternal_indexes, copy(_nonexternal_indexes), 2,2, Int64[], 0,_scaling,_scaling,true)
         end
         sizehint!(t._edges_to_check, 1000)
         sizehint!(t, n)
@@ -364,11 +404,11 @@ end
 _locate(t::DelaunayTessellation2D{T}, p::S) where {T<:AbstractPoint2D, S<:AbstractPoint2D} = t._trigs[_findindex(t, p)]
 
 function locate(t::DelaunayTessellation2D{T},p::S) where {T<:AbstractPoint2D, S<:AbstractPoint2D}
-    ind = _locate(t,rescale(p,t._scaling))
-    if isexternal(t)
-        error("Point is outside of triangulation")
+    tri = _locate(t,rescale(p,t._scaling))
+    if isexternal(tri)
+        throw(DomainError("Point is outside of triangulation"))
     end
-    return (rescale(geta(t),tess._invscaling),rescale(getb(t),tess._invscaling),rescale(getb(t),tess._invscaling))
+    return (rescale(geta(tri),t._invscaling),rescale(getb(tri),t._invscaling),rescale(getc(tri),t._invscaling))
 end
 
 
