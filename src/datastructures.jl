@@ -72,7 +72,7 @@ function setpoint!(tri::DelaunayTriangle{T}, index::Int64,val::T) where T<:Abstr
     clean!(tri)
 end
 
-function getneighbor(tri::DelaunayTriangle{T}, index::Int64) where T<:AbstractPoint2D 
+function getneighbor(tri::DelaunayTriangle{T}, index::Int64) where T<:AbstractPoint2D
     if index == 1
         return tri.neighbor_a
     elseif index == 2
@@ -176,7 +176,7 @@ function _clean_nonexternal_indexes!(tess)
             tess._nonexternal_indexes_inv[i] = 0
             continue
         end
-        if isexternal(t)
+        if isexternal(t) || _flat_dont_keep(tess,t)
             tess._nonexternal_indexes_inv[i] = 0
             continue
         else
@@ -349,7 +349,9 @@ function _findindex(tess::DelaunayTessellation2D{T}, p::S) where {T<:AbstractPoi
     #i::Int64 = tess._last_trig_index
     counter::Int64 = 0
     ntriangles = tess._last_trig_index
+    previ = i
     while true
+        tmpi = i
         counter += 1
         @inbounds w = intriangle(tess._trigs[i], p)
         if w > 0
@@ -361,9 +363,20 @@ function _findindex(tess::DelaunayTessellation2D{T}, p::S) where {T<:AbstractPoi
             i = getneighbor(tr,1)
         elseif w == -2
             i = getneighbor(tr,2)
+        elseif w == -5
+            #The `triangle` is actually a line, and we are on it.
+            i = getneighbor(tr,1)
+            if i == previ
+                i = getneighbor(tr,2)
+            end
+            if i == previ
+                i = getneighbor(tr,3)
+            end
+            counter -= 2
         else
             i = getneighbor(tr,3)
         end
+        previ = tmpi
         if counter > ntriangles
             throw(DomainError("Point was not found in any triangle"))
         end
@@ -377,7 +390,7 @@ function triangles(tess::DelaunayTessellation2D{T}) where T<:AbstractPoint2D
         if i > tess._last_trig_index
             break
         end
-        isexternal(t) && continue
+        (isexternal(t) || _flat_dont_keep(tess,t)) && continue
         push!(res,(rescale(geta(t),sc), rescale(getb(t),sc), rescale(getc(t),sc)))
     end
     return res
@@ -397,8 +410,8 @@ function Base.getindex(tess,i)
 end
 
 function Base.show(io::IO,tess::DelaunayTessellation2D{T}) where {T<:AbstractPoint2D}
-    println(io,"DelaunayTesselation2D object with triangles:")
-    Base.show(triangles(tess))
+    ntri = length(tess._trigs)
+    println(io,"DelaunayTesselation2D object with $ntri (including external ones) triangles.")
 end
 
 _locate(t::DelaunayTessellation2D{T}, p::S) where {T<:AbstractPoint2D, S<:AbstractPoint2D} = t._trigs[_findindex(t, p)]
@@ -418,3 +431,14 @@ moveb(tess::DelaunayTessellation2D{T},
       trig::DelaunayTriangle{T}) where {T<:AbstractPoint2D} = tess._trigs[getneighbor(trig,2)]
 movec(tess::DelaunayTessellation2D{T},
       trig::DelaunayTriangle{T}) where {T<:AbstractPoint2D} = tess._trigs[getneighbor(trig,3)]
+
+
+function _isflat(tri)
+            l1 = Line2D(getpoint(tri,1),getpoint(tri,2))
+            return orientation(l1,getpoint(tri,3)) == 0
+end
+
+function _flat_dont_keep(tess,tri)
+    nexternal = count([isexternal(tess._trigs[getneighbor(tri,i)]) for i in 1:3])
+    return _isflat(tri) && (nexternal != 3)
+end

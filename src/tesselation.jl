@@ -206,17 +206,21 @@ If `tri` contains only non-external nodes, this is equivalent to
 `incircle(tri, center_pt) > 0`. Otherwise, external nodes are treated as being points "at infinity".
 
 """
-function _should_flip_edge(tri_center_point, tri,center_pt,convex)
+function _should_flip_edge(tri_center_point_index, tri_center_point, tri,center_pt,center_pt_j,convex)
         if !convex
             return incircle(tri, center_pt) > 0
         end
         nexternal::Int64 = 0
         last_external::Int64 = 1
+        opposite_external::Int64 = -1
         for i in 1:3
             curpt = getpoint(tri,i)
             if isexternal(curpt)
                 nexternal += 1
                 last_external = i
+            end
+            if getneighbor(tri,i) == tri_center_point_index
+                opposite_external = i
             end
         end
 
@@ -224,13 +228,27 @@ function _should_flip_edge(tri_center_point, tri,center_pt,convex)
             return incircle(tri, center_pt) > 0
         end
 
-        if nexternal >= 2
-            return false
-        end
+        if nexternal == 2
+            center_pt_j_p = mod1(center_pt_j+1,3)
+            point_center_pt_j_p = getpoint(tri_center_point,center_pt_j_p)
+            center_pt_j_pp = mod1(center_pt_j_p+1,3)
+            point_center_pt_j_pp = getpoint(tri_center_point,center_pt_j_pp)
+            l1 = Line2D(center_pt,point_center_pt_j_p)
+            l2 = Line2D(center_pt,point_center_pt_j_pp)
+            o1 = orientation(l1,point_center_pt_j_pp)
+            o2 = orientation(l2,point_center_pt_j_p)
+            point_opposite_external = getpoint(tri,opposite_external)
+            o3 = orientation(l1,point_opposite_external)
+            o4 = orientation(l2,point_opposite_external)
 
+            return  o3 != 0 && o4 != 0 && (o1 == o3) && (o2 == o4)
+        #elseif (o1 != 0 && o3 != 0 && o1 != o3) || (o2!= 0 && o4 != 0 && o2 != o4)
+        #    return false
+        end
         #We have only one external edge
 
-        if getneighbor(tri,last_external) == tri_center_point
+        #If the opposite edge is an external edge
+        if last_external == opposite_external
             return false
         end
 
@@ -240,7 +258,7 @@ function _should_flip_edge(tri_center_point, tri,center_pt,convex)
         l = Line2D(getpoint(tri,last_external_p),getpoint(tri,last_external_pp))
         o1 = orientation(l,getpoint(tri,last_external))
         o2 = orientation(l,center_pt)
-        return o1 == o2
+        return o1 != 0 && o2 != 0 && o1 == o2
 end
 
 """
@@ -260,14 +278,19 @@ function _restoredelaunayhood!(tess::DelaunayTessellation2D{T},
     for j in [1,2,3]
         push!(tess._edges_to_check, to_add[j])
         while length(tess._edges_to_check) > 0
-            #Find the corresponding `a` vertex
+            #Find the corresponding `j` vertex
+
+            #This is the triangle just added
             @inbounds trix = tess._edges_to_check[end]
             @inbounds tr_i = tess._trigs[trix]
+
+            #This is it's j-th neighbor
             @inbounds nb_j = getneighbor(tr_i,j)
+
             #Check that we are not at the boundary
             if nb_j > 1
                 @inbounds tr_f = tess._trigs[nb_j]
-                if _should_flip_edge(trix,tr_f,center_pt,tess._convex)
+                if _should_flip_edge(trix,tr_i,tr_f,center_pt,j,tess._convex)
                     _flip!(tess,j,trix,nb_j)
                     push!(tess._edges_to_check, nb_j)
                     continue
@@ -302,7 +325,7 @@ function _in_ref_tri(p::T) where T<:AbstractPoint2D
     if !in_base_square_domain(p)
         return false
     end
-    
+
     w = intriangle(ref_tri, p)
     return w > 0
 end
@@ -329,7 +352,7 @@ function push!(tess::DelaunayTessellation2D{T}, p::T,clean=true) where T<:Abstra
     sizefit_at_least(tess, tess._total_points_added)
 
     if tess._convex
-        new_pt = rescale(p,tess._scaling) 
+        new_pt = rescale(p,tess._scaling)
         if ! _in_ref_tri(new_pt)
             invscale = tess._invscaling
             new_scaling = get_new_scaling(invscale,p,p)
@@ -363,9 +386,11 @@ function _pushunsorted!(tess::DelaunayTessellation2D{T}, a::Array{T, 1},clean=tr
 end
 
 # push an array but sort it first for better performance
-function push!(tess::DelaunayTessellation2D{T}, a::Array{T, 1},clean=true) where T<:AbstractPoint2D
-    shuffle!(a)
-    mssort!(a)
+function push!(tess::DelaunayTessellation2D{T}, a::Array{T, 1},clean=true;shuffle_points=true) where T<:AbstractPoint2D
+    if shuffle_points
+        shuffle!(a)
+        mssort!(a)
+    end
     if tess._convex
         maxx = maximum([getx(p) for p in a])
         minx = minimum([getx(p) for p in a])
